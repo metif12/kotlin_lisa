@@ -16,7 +16,9 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
+import kotlin.math.ln
 import kotlin.math.log10
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 class LISA {
@@ -78,7 +80,7 @@ class LISA {
                 val text = IOUtil.toString(inputStream)
                 val split = text.split("\\r\\n\\*{44}\\r\\n *".toRegex())
                 for (rawDoc in split) {
-                    if(rawDoc == "") continue
+                    if (rawDoc == "") continue
 
                     val d = rawDoc.replace("\\r\\n *?\\r\\n".toRegex(), "\r\n\r\n")
                     val endID = d.indexOf("\r")
@@ -101,7 +103,7 @@ class LISA {
         if (queriesInputStream != null) {
             val queriesCorpus = IOUtil.toString(queriesInputStream)
             for (rawQ in queriesCorpus.split("#\\r\\n".toRegex())) {
-                if(rawQ =="") continue
+                if (rawQ == "") continue
 
                 val endId = rawQ.indexOf("\r\n")
                 val idQuery = rawQ.substring(0, endId).trim()
@@ -112,7 +114,7 @@ class LISA {
         if (queriesDocInputStream != null) {
             val queriesAnswersCorpus = IOUtil.toString(queriesDocInputStream)
             for (rawQAnswer in queriesAnswersCorpus.split(" -1\\r\\n\\r\\n".toRegex())) {
-                if(rawQAnswer =="") continue
+                if (rawQAnswer == "") continue
 
                 val queryAnswers = rawQAnswer.replace("Query ", "")
                 val endAnswersId = queryAnswers.indexOf("\r\n", 0)
@@ -145,7 +147,7 @@ class LISA {
 
                 bytesRef = terms.next()
 
-                if(bytesRef == null) break
+                if (bytesRef == null) break
 
                 val docTerm = bytesRef.utf8ToString()
 
@@ -197,15 +199,15 @@ class LISA {
 
                 bytesRef = terms.next()
 
-                if(bytesRef == null) break
+                if (bytesRef == null) break
 
-                val doc_term = bytesRef.utf8ToString()
-                if (!query!!.terms.contains(doc_term)) continue
+                val docTerm = bytesRef.utf8ToString()
+                if (!query!!.terms.contains(docTerm)) continue
                 val tf = terms.totalTermFreq()
 
                 //if (tf <= 0) continue;
-                val df = directoryReader.docFreq(Term("content", doc_term))
-                val idf = Math.log(((N - df + 0.5f) / (df + 0.5f) + 1).toDouble())
+                val df = directoryReader.docFreq(Term("content", docTerm))
+                val idf = ln(((N - df + 0.5f) / (df + 0.5f) + 1).toDouble())
                 score += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * (dl / avgDl.toDouble())))
             }
             if (score > 0) scores.add(Score(score, externalDocId))
@@ -232,15 +234,15 @@ class LISA {
 
                 bytesRef = terms.next()
 
-                if(bytesRef == null) break
+                if (bytesRef == null) break
                 val doc_term = bytesRef.utf8ToString()
 
                 //if (!query.terms.contains(doc_term)) continue;
-                val doc_tf = terms.totalTermFreq()
+                val docTf = terms.totalTermFreq()
 
                 //if (doc_tf <= 0) continue;
-                val que_tf = query!!.tf[doc_term]
-                val prob = Math.pow(doc_tf.toDouble() / dl, que_tf?.toDouble() ?: 1.toDouble())
+                val queTf = query!!.tf[doc_term]
+                val prob = (docTf.toDouble() / dl).pow(queTf?.toDouble() ?: 1.toDouble())
                 score *= if (prob == 0.0) 1e-15 else prob
             }
             if (score > 0) scores.add(Score(score, externalDocId))
@@ -302,7 +304,7 @@ class LISA {
         var i = 0
         while (i < k && i < scores.size) {
             if (isRelevant(query, scores[i].exID)) {
-                val log: Double = if (i == 1) 1.0 else Math.log10(i.toDouble()) / log10(2.0)
+                val log: Double = if (i == 1) 1.0 else log10(i.toDouble()) / log10(2.0)
                 val cg = scores[i].score / log
                 dcg += cg.toInt()
                 len += (cg * cg).toInt()
