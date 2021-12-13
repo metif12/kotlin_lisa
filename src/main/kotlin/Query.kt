@@ -6,15 +6,16 @@ import java.util.*
 import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
 
-class Query(val text: String, val exID: String, relevantDocExIDs: Array<String>) {
+class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>) {
     var tf: HashMap<String, Int>
-    var relevantIDs: ArrayList<String>
+    var relevant: ArrayList<String>
     var terms: ArrayList<String>
 
     init {
-        tf = HashMap()
-        terms = ArrayList()
-        this.relevantIDs = arrayListOf<String>(*relevantDocExIDs)
+        this.tf = HashMap()
+        this.terms = ArrayList()
+        this.relevant = arrayListOf<String>(*relevantDocExIDs)
+        this.text = text.replace("\r\n", " ")
         val porterStemmer = PorterStemmer()
         val tokens = text
             .lowercase(Locale.getDefault())
@@ -29,6 +30,7 @@ class Query(val text: String, val exID: String, relevantDocExIDs: Array<String>)
         for (token in tokens) {
             if (token != "" && !EnglishAnalyzer.ENGLISH_STOP_WORDS_SET.contains(token)) {
                 porterStemmer.current = token
+                porterStemmer.stem()
                 val current = porterStemmer.current
                 if (!terms.contains(current)) {
                     terms.add(current)

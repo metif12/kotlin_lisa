@@ -8,11 +8,15 @@ import org.apache.lucene.analysis.en.PorterStemFilter
 import org.apache.lucene.analysis.standard.StandardTokenizer
 
 class MyAnalyzer : Analyzer() {
-    override fun createComponents(s: String): TokenStreamComponents {
-        val standard_ts = TokenStreamComponents(StandardTokenizer())
-        val lowercase_ts = TokenStreamComponents(standard_ts.source, LowerCaseFilter(standard_ts.tokenStream))
-        val stopFilter = StopFilter(lowercase_ts.tokenStream, EnglishAnalyzer.ENGLISH_STOP_WORDS_SET)
-        val stopword_ts = TokenStreamComponents(lowercase_ts.source, stopFilter)
-        return TokenStreamComponents(stopword_ts.source, PorterStemFilter(stopword_ts.tokenStream))
+    override fun createComponents(txt: String): TokenStreamComponents {
+        //tokenize
+        val standardTs = TokenStreamComponents(StandardTokenizer())
+        //lowercase
+        val lowercaseTs = TokenStreamComponents(standardTs.source, LowerCaseFilter(standardTs.tokenStream))
+        //stop words
+        val stopFilter = StopFilter(lowercaseTs.tokenStream, EnglishAnalyzer.ENGLISH_STOP_WORDS_SET)
+        val stopWordTs = TokenStreamComponents(lowercaseTs.source, stopFilter)
+        //stemming
+        return TokenStreamComponents(stopWordTs.source, PorterStemFilter(stopWordTs.tokenStream))
     }
 }
