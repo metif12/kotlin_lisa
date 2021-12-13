@@ -36,31 +36,15 @@ class Engine {
         directory.close()
     }
 
-    private fun buildIndex() {
+    private fun index() {
         val indexWriter = IndexWriter(directory, config)
         indexWriter.commit()
-        parseCorpus(indexWriter)
+        parseCollection(indexWriter)
         indexWriter.commit()
         indexWriter.close()
     }
 
-    private fun parseCorpus(indexWriter: IndexWriter) {
-        val corpusNames = arrayOf(
-            "LISA0.001",
-            "LISA0.501",
-            "LISA1.001",
-            "LISA1.501",
-            "LISA2.001",
-            "LISA2.501",
-            "LISA3.001",
-            "LISA3.501",
-            "LISA4.001",
-            "LISA4.501",
-            "LISA5.001",
-            "LISA5.501",
-            "LISA5.627",
-            "LISA5.850"
-        )
+    private fun getContentFieldType(): FieldType {
         val contentFieldType = FieldType()
         contentFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS)
         contentFieldType.setTokenized(true)
@@ -68,8 +52,13 @@ class Engine {
         contentFieldType.setStoreTermVectors(true)
         contentFieldType.freeze()
 
+        return contentFieldType
+    }
+
+    private fun parseCollection(indexWriter: IndexWriter) {
+
         var lastId = 0
-        for (corpus_name in corpusNames) {
+        for (corpus_name in getCorpusNames()) {
             val inputStream = Engine::class.java.getResourceAsStream("\\..\\..\\$corpus_name")
             if (inputStream != null) {
                 val text = IOUtil.toString(inputStream)
@@ -77,26 +66,51 @@ class Engine {
                 for (rawDoc in split) {
                     if (rawDoc == "") continue
 
-                    val d = rawDoc.replace("\\r\\n *?\\r\\n".toRegex(), "\r\n\r\n")
-                    val endID = d.indexOf("\r")
-                    val id = d.substring(0, endID).replace("Document", "").trim()
-                    val content = d.substring(endID + 2)
+                    val id = parseDoc(rawDoc,indexWriter)
 
-                    if (id.toInt() != lastId + 1)
+                    if (id != lastId + 1)
                         log("jump doc id from $lastId to $id\n")
 
-                    val doc = Document()
-                    doc.add(Field("id", id, StringField.TYPE_STORED))
-                    doc.add(Field("content", content, contentFieldType))
-                    indexWriter.addDocument(doc)
-
-                    lastId = id.toInt()
+                    lastId = id
                 }
             }
         }
     }
 
-    fun loadQueries() {
+    private fun parseDoc(rawDoc: String, indexWriter: IndexWriter): Int {
+        val contentFieldType = getContentFieldType()
+
+        val d = rawDoc.replace("\\r\\n *?\\r\\n".toRegex(), "\r\n\r\n")
+        val endID = d.indexOf("\r")
+        val id = d.substring(0, endID).replace("Document", "").trim()
+        val content = d.substring(endID + 2)
+
+        val doc = Document()
+        doc.add(Field("id", id, StringField.TYPE_STORED))
+        doc.add(Field("content", content, contentFieldType))
+        indexWriter.addDocument(doc)
+
+        return id.toInt()
+    }
+
+    private fun getCorpusNames() = arrayOf(
+        "LISA0.001",
+        "LISA0.501",
+        "LISA1.001",
+        "LISA1.501",
+        "LISA2.001",
+        "LISA2.501",
+        "LISA3.001",
+        "LISA3.501",
+        "LISA4.001",
+        "LISA4.501",
+        "LISA5.001",
+        "LISA5.501",
+        "LISA5.627",
+        "LISA5.850"
+    )
+
+    private fun parseQueries() {
         val queryHashMap = HashMap<String, Query>()
         val queriesInputStream = Engine::class.java.getResourceAsStream("\\..\\..\\LISA.QUE")
         val queriesDocInputStream = Engine::class.java.getResourceAsStream("\\..\\..\\LISA.REL")
@@ -108,19 +122,16 @@ class Engine {
             for (rawQ in queriesCorpus.split("#\\r\\n".toRegex())) {
                 if (rawQ == "") continue
 
-                val endId = rawQ.indexOf("\r\n")
-                val idQuery = rawQ.substring(0, endId).trim()
-                val textQuery = rawQ.substring(endId + 2)
+                val query = parseQueryText(rawQ)
 
+                val idQuery = query.exID.toInt()
 
                 if (idQuery.toInt() != lastQId + 1)
                     log("jump query id from $lastQId to $idQuery\n")
 
-                if (textQuery == "") continue
+                queryHashMap[query.exID] = query
 
-                queryHashMap[idQuery] = Query(textQuery, idQuery, arrayOf<String>())
-
-                lastQId = idQuery.toInt()
+                lastQId = idQuery
             }
         }
 
@@ -140,13 +151,20 @@ class Engine {
                     queryList.add(Query(query.text, query.exID, textAnswers.split(" ".toRegex()).toTypedArray()))
                 }
 
-
                 if (idAnswers.toInt() != lastQRId + 1)
                     log("jump answer id from $lastQRId to $idAnswers\n")
 
                 lastQRId = idAnswers.toInt()
             }
         }
+    }
+
+    private fun parseQueryText(rawQ: String): Query {
+        val endId = rawQ.indexOf("\r\n")
+        val idQuery = rawQ.substring(0, endId).trim()
+        val textQuery = rawQ.substring(endId + 2)
+
+        return Query(textQuery, idQuery, arrayOf<String>())
     }
 
     private fun getDocumentExId(docId: Int): String {
@@ -160,6 +178,7 @@ class Engine {
         }
         return sumDL.toDouble() / directoryReader.maxDoc()
     }
+
     private fun getCorpusLength(): Long {
         var sumDL = 0L
         for (docId in 0 until directoryReader.maxDoc()) {
@@ -169,6 +188,7 @@ class Engine {
     }
 
     private fun docFrequency(docTerm: String?) = directoryReader.docFreq(Term("content", docTerm))
+
     private fun totalTermFrequency(docTerm: String?) = directoryReader.totalTermFreq(Term("content", docTerm))
 
     fun cosine(query: Query): ArrayList<Score> {
@@ -323,7 +343,7 @@ class Engine {
         return t.toString()
     }
 
-    private fun getNDCG(query: Query?, scores: ArrayList<Score>, k: Int): Double {
+    private fun getNDCG(query: Query, scores: ArrayList<Score>, k: Int): Double {
         var dcg = 0
         var len = 0
         var i = 0
@@ -339,7 +359,7 @@ class Engine {
         return if (dcg == 0) 0.0 else dcg / sqrt(len.toDouble())
     }
 
-    fun getAP(query: Query?, scores: ArrayList<Score>, k: Int): Double {
+    fun getAP(query: Query, scores: ArrayList<Score>, k: Int): Double {
         var n = 0
         var sum = 0
         var i = 0
@@ -353,18 +373,18 @@ class Engine {
         return if (n == 0) 0.0 else sum / n.toDouble()
     }
 
-    private fun getFScore(query: Query?, scores: ArrayList<Score>, k: Int): Double {
+    private fun getFScore(query: Query, scores: ArrayList<Score>, k: Int): Double {
         val recall = getRecall(query, scores, k)
         val precision = getPrecision(query, scores, k)
         return 1.0 / (0.5.toFloat() * (1 / recall)) + (1 - 0.5.toFloat()) * (1 / precision)
     }
 
-    private fun getRecall(query: Query?, scores: ArrayList<Score>, k: Int): Double {
+    private fun getRecall(query: Query, scores: ArrayList<Score>, k: Int): Double {
 //        return (double) getTP(query,scores,k) / (getTP(query,scores,k) + getFN(query,scores,k));
-        return getTP(query, scores, k).toDouble() / query!!.relevant.size
+        return getTP(query, scores, k).toDouble() / query.relevant.size
     }
 
-    private fun getPrecision(query: Query?, scores: ArrayList<Score>, k: Int): Double {
+    private fun getPrecision(query: Query, scores: ArrayList<Score>, k: Int): Double {
 //        return (double) getTP(query,scores,k) / (getTP(query,scores,k) + getFP(query,scores,k));
         return getTP(query, scores, k).toDouble() / k
     }
@@ -381,7 +401,7 @@ class Engine {
         return k - getTP(query, scores, k)
     }
 
-    private fun getTP(query: Query?, scores: ArrayList<Score>, k: Int): Int {
+    private fun getTP(query: Query, scores: ArrayList<Score>, k: Int): Int {
         var tp = 0
         var i = 0
         while (i < k && i < scores.size) {
@@ -393,8 +413,8 @@ class Engine {
         return tp
     }
 
-    private fun isRelevant(query: Query?, exID: String): Boolean {
-        return query!!.relevant.contains(exID)
+    private fun isRelevant(query: Query, exID: String): Boolean {
+        return query.relevant.contains(exID)
     }
 
     init {
@@ -404,11 +424,11 @@ class Engine {
 
         directory = FSDirectory.open(indexPath)
 
-        buildIndex()
+        index()
 
         directoryReader = DirectoryReader.open(directory)
 
-        loadQueries()
+        parseQueries()
     }
 
     fun log(msg: String) {

@@ -8,7 +8,7 @@ fun main(args: Array<String>) {
     val lisa = Engine()
     
     //cosine
-    if (false) {
+    if (true) {
         var output = ""
         var sumAp = 0
         var count = 0
@@ -52,7 +52,7 @@ fun main(args: Array<String>) {
     }
 
     //bm25
-    if (false) {
+    if (true) {
         var output = ""
         var sumAp = 0
         var count = 0
