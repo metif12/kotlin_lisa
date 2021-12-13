@@ -1,17 +1,16 @@
 package ir.lisa
 
 import org.apache.lucene.analysis.TokenStream
-import org.apache.lucene.analysis.en.EnglishAnalyzer
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
-import org.tartarus.snowball.ext.PorterStemmer
 import java.io.IOException
 import java.util.*
 
 
 class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>) {
-    var tf: HashMap<String, Int>
+    var tf: HashMap<String, Double>
     var relevant: ArrayList<String>
     var terms: ArrayList<String>
+    var length = 0.0
 
     init {
         this.tf = HashMap()
@@ -24,11 +23,13 @@ class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>)
         for (token in tokens) {
             if (!terms.contains(token)) {
                 terms.add(token)
-                tf[token] = 1
+                tf[token] = 1.0
             } else {
-                tf.replace(token, tf[token]!! + 1)
+                tf.replace(token, tf[token]!! + 1.0)
             }
         }
+
+        for(t in terms) length += tf[t]!!
     }
 
     @Throws(IOException::class)

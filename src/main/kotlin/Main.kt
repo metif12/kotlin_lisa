@@ -30,7 +30,7 @@ fun main(args: Array<String>) {
     }
 
     //likelihood
-    if (true) {
+    if (false) {
         var output = ""
         var sumAp = 0
         var count = 0
@@ -52,7 +52,7 @@ fun main(args: Array<String>) {
     }
 
     //bm25
-    if (true) {
+    if (false) {
         var output = ""
         var sumAp = 0
         var count = 0

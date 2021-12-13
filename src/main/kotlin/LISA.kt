@@ -2,6 +2,7 @@ package ir.lisa
 
 import org.apache.commons.io.IOUtil
 import org.apache.lucene.analysis.Analyzer
+import org.apache.lucene.analysis.hunspell.Dictionary
 import org.apache.lucene.document.Document
 import org.apache.lucene.document.Field
 import org.apache.lucene.document.FieldType
@@ -10,10 +11,9 @@ import org.apache.lucene.index.*
 import org.apache.lucene.store.Directory
 import org.apache.lucene.store.FSDirectory
 import org.apache.lucene.util.BytesRef
-import java.io.IOException
+import org.apache.lucene.util.BytesRefIterator
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -84,7 +84,7 @@ class LISA {
                     val id = d.substring(0, endID).replace("Document", "").trim()
                     val content = d.substring(endID + 2)
 
-                    if(id.toInt() != lastId +1)
+                    if (id.toInt() != lastId + 1)
                         log("jump doc id from $lastId to $id\n")
 
                     val doc = Document()
@@ -115,10 +115,10 @@ class LISA {
                 val textQuery = rawQ.substring(endId + 2)
 
 
-                if(idQuery.toInt() != lastQId +1)
+                if (idQuery.toInt() != lastQId + 1)
                     log("jump query id from $lastQId to $idQuery\n")
 
-                if(textQuery == "") continue
+                if (textQuery == "") continue
 
                 queryHashMap[idQuery] = Query(textQuery, idQuery, arrayOf<String>())
 
@@ -143,7 +143,7 @@ class LISA {
                 }
 
 
-                if(idAnswers.toInt() != lastQRId +1)
+                if (idAnswers.toInt() != lastQRId + 1)
                     log("jump answer id from $lastQRId to $idAnswers\n")
 
                 lastQRId = idAnswers.toInt()
@@ -151,19 +151,27 @@ class LISA {
         }
     }
 
-    fun getDocumentExId(docId: Int): String {
+    private fun getDocumentExId(docId: Int): String {
         return directoryReader.document(docId)["id"]
     }
 
-    private fun getAverageFieldLength(): Double{
-        var sumDL = 0
+    private fun getAverageFieldLength(): Double {
+        var sumDL = 0L
         for (docId in 0 until directoryReader.maxDoc()) {
-            sumDL += directoryReader.getTermVector(docId, "content").sumTotalTermFreq.toInt()
+            sumDL += directoryReader.getTermVector(docId, "content").sumTotalTermFreq
         }
         return sumDL.toDouble() / directoryReader.maxDoc()
     }
+    private fun getCorpusLength(): Long {
+        var sumDL = 0L
+        for (docId in 0 until directoryReader.maxDoc()) {
+            sumDL += directoryReader.getTermVector(docId, "content").sumTotalTermFreq
+        }
+        return sumDL.toLong()
+    }
 
     private fun docFrequency(docTerm: String?) = directoryReader.docFreq(Term("content", docTerm))
+    private fun totalTermFrequency(docTerm: String?) = directoryReader.totalTermFreq(Term("content", docTerm))
 
     fun cosine(query: Query): ArrayList<Score> {
         val scores = ArrayList<Score>()
@@ -186,11 +194,11 @@ class LISA {
                 val docTerm = bytesRef.utf8ToString()
 
                 val docTf = terms.totalTermFreq()
-                val queTf = query.tf[docTerm]
+                val queTf = if (query.tf[docTerm] != null) log10((query.tf[docTerm] ?: 0.0) + 1.0) else 0.0
                 val docDf = docFrequency(docTerm)
                 val docIdf = log10(N.toDouble() / docDf)
-                val docWeight = (log10(docTf.toDouble()) +1) * docIdf
-                val qWeight = (log10((queTf ?: 0).toDouble()) +1) * docIdf
+                val docWeight = log10(docTf.toDouble()+ 1)  * docIdf
+                val qWeight = queTf * docIdf
                 sumUp += qWeight * docWeight
                 sumDownQue += qWeight * qWeight
                 sumDownDoc += docWeight * docWeight
@@ -198,7 +206,7 @@ class LISA {
 
             val score = sumUp / (sqrt(sumDownDoc) * sqrt(sumDownQue))
 
-            scores.add(Score(score, externalDocId))
+            if(score > 0) scores.add(Score(score, externalDocId))
         }
         scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * -1 }
         return scores
@@ -236,9 +244,9 @@ class LISA {
                 val df = docFrequency(docTerm)
                 val idf = log10(N.toDouble() / df)
 
-                score += idf *( tf * (k1 + 1) / (tf + k1 * (1 - b + (b * (dl / avgDl)))))
+                score += idf * (tf * (k1 + 1) / (tf + k1 * (1 - b + (b * (dl / avgDl)))))
             }
-            scores.add(Score(score, externalDocId))
+            if(score > 0) scores.add(Score(score, externalDocId))
         }
         scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * -1 }
         return scores
@@ -246,6 +254,8 @@ class LISA {
 
     fun likelihood(query: Query): ArrayList<Score> {
         val scores = ArrayList<Score>()
+        val smoothingFactor = 0.35
+
         for (docId in 0 until directoryReader.maxDoc()) {
             var score = 1.0
             val externalDocId = getDocumentExId(docId)
@@ -254,30 +264,30 @@ class LISA {
             val terms = vector.iterator()
             var bytesRef: BytesRef?
 
+
             while (true) {
 
                 bytesRef = terms.next()
 
                 if (bytesRef == null) break
-                val doc_term = bytesRef.utf8ToString()
+                val docTerm = bytesRef.utf8ToString()
 
-                //if (!query.terms.contains(doc_term)) continue;
                 val docTf = terms.totalTermFreq()
+                val cf = totalTermFrequency(docTerm)
 
-                //if (doc_tf <= 0) continue;
-                val queTf = query!!.tf[doc_term]
-                val prob = (docTf.toDouble() / dl).pow(queTf?.toDouble() ?: 1.toDouble())
-                score *= if (prob == 0.0) 1e-15 else prob
+                val queTf = query.tf[docTerm]
+                val prob = (1-smoothingFactor)*(docTf.toDouble() / dl) + smoothingFactor * (cf/getCorpusLength())
+                score *= if (prob == 0.0) 1e-15 else prob.pow(queTf?.toDouble() ?: 1.toDouble())
             }
-            if (score > 0) scores.add(Score(score, externalDocId))
+
+            if(score > 0) scores.add(Score(score, externalDocId))
         }
-        scores.sortWith(Comparator { o1: Score, o2: Score ->
-            o1.score.compareTo(o2.score) * -1
-        })
+        scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * -1 }
         return scores
     }
 
     var hit = 100
+
     fun formatMeasurementOfScoresResult(query: Query, scores: ArrayList<Score>): String {
         val t = StringBuilder()
         t.append('\n')
@@ -402,7 +412,7 @@ class LISA {
         loadQueries()
     }
 
-    fun log(msg: String){
+    fun log(msg: String) {
         writeToFile("logs.txt", msg, true)
     }
 }
