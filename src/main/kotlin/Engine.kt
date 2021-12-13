@@ -2,7 +2,6 @@ package ir.lisa
 
 import org.apache.commons.io.IOUtil
 import org.apache.lucene.analysis.Analyzer
-import org.apache.lucene.analysis.hunspell.Dictionary
 import org.apache.lucene.document.Document
 import org.apache.lucene.document.Field
 import org.apache.lucene.document.FieldType
@@ -11,7 +10,6 @@ import org.apache.lucene.index.*
 import org.apache.lucene.store.Directory
 import org.apache.lucene.store.FSDirectory
 import org.apache.lucene.util.BytesRef
-import org.apache.lucene.util.BytesRefIterator
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.math.log10
@@ -19,7 +17,7 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 
-class LISA {
+class Engine {
     var directory: Directory
     var directoryReader: DirectoryReader
     var analyzer: Analyzer = MyAnalyzer()
@@ -72,7 +70,7 @@ class LISA {
 
         var lastId = 0
         for (corpus_name in corpusNames) {
-            val inputStream = LISA::class.java.getResourceAsStream("\\..\\..\\$corpus_name")
+            val inputStream = Engine::class.java.getResourceAsStream("\\..\\..\\$corpus_name")
             if (inputStream != null) {
                 val text = IOUtil.toString(inputStream)
                 val split = text.split("\\r\\n\\*{44}\\r\\n *".toRegex())
@@ -100,8 +98,8 @@ class LISA {
 
     fun loadQueries() {
         val queryHashMap = HashMap<String, Query>()
-        val queriesInputStream = LISA::class.java.getResourceAsStream("\\..\\..\\LISA.QUE")
-        val queriesDocInputStream = LISA::class.java.getResourceAsStream("\\..\\..\\LISA.REL")
+        val queriesInputStream = Engine::class.java.getResourceAsStream("\\..\\..\\LISA.QUE")
+        val queriesDocInputStream = Engine::class.java.getResourceAsStream("\\..\\..\\LISA.REL")
 
         var lastQId = 0
 
@@ -255,6 +253,7 @@ class LISA {
     fun likelihood(query: Query): ArrayList<Score> {
         val scores = ArrayList<Score>()
         val smoothingFactor = 0.35
+        val corpusLength = getCorpusLength()
 
         for (docId in 0 until directoryReader.maxDoc()) {
             var score = 1.0
@@ -276,13 +275,13 @@ class LISA {
                 val cf = totalTermFrequency(docTerm)
 
                 val queTf = query.tf[docTerm]
-                val prob = (1-smoothingFactor)*(docTf.toDouble() / dl) + smoothingFactor * (cf/getCorpusLength())
-                score *= if (prob == 0.0) 1e-15 else prob.pow(queTf?.toDouble() ?: 1.toDouble())
+                val prob = (1-smoothingFactor)*(docTf.toDouble() / dl) + smoothingFactor * (cf/ corpusLength)
+                score *= prob.pow(queTf ?: 0.0)
             }
 
             if(score > 0) scores.add(Score(score, externalDocId))
         }
-        scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * -1 }
+        scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * +1 }
         return scores
     }
 

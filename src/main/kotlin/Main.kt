@@ -5,10 +5,10 @@ import java.io.FileWriter
 
 fun main(args: Array<String>) {
 
-    val lisa = LISA()
+    val lisa = Engine()
     
     //cosine
-    if (true) {
+    if (false) {
         var output = ""
         var sumAp = 0
         var count = 0
@@ -30,7 +30,7 @@ fun main(args: Array<String>) {
     }
 
     //likelihood
-    if (false) {
+    if (true) {
         var output = ""
         var sumAp = 0
         var count = 0
