@@ -33,14 +33,12 @@ class LISA {
             return config
         }
 
-    @Throws(IOException::class)
     fun close() {
         directoryReader.close()
         directory.close()
     }
 
-    @Throws(IOException::class)
-    fun buildIndex() {
+    private fun buildIndex() {
         val indexWriter = IndexWriter(directory, config)
         indexWriter.commit()
         parseCorpus(indexWriter)
@@ -48,7 +46,6 @@ class LISA {
         indexWriter.close()
     }
 
-    @Throws(IOException::class)
     private fun parseCorpus(indexWriter: IndexWriter) {
         val corpusNames = arrayOf(
             "LISA0.001",
@@ -101,7 +98,6 @@ class LISA {
         }
     }
 
-    @Throws(IOException::class)
     fun loadQueries() {
         val queryHashMap = HashMap<String, Query>()
         val queriesInputStream = LISA::class.java.getResourceAsStream("\\..\\..\\LISA.QUE")
@@ -155,16 +151,28 @@ class LISA {
         }
     }
 
-    @Throws(IOException::class)
-    fun cosine(query: Query?): ArrayList<Score> {
+    fun getDocumentExId(docId: Int): String {
+        return directoryReader.document(docId)["id"]
+    }
+
+    private fun getAverageFieldLength(): Double{
+        var sumDL = 0
+        for (docId in 0 until directoryReader.maxDoc()) {
+            sumDL += directoryReader.getTermVector(docId, "content").sumTotalTermFreq.toInt()
+        }
+        return sumDL.toDouble() / directoryReader.maxDoc()
+    }
+
+    private fun docFrequency(docTerm: String?) = directoryReader.docFreq(Term("content", docTerm))
+
+    fun cosine(query: Query): ArrayList<Score> {
         val scores = ArrayList<Score>()
         val N = directoryReader.maxDoc()
         for (docId in 0 until directoryReader.maxDoc()) {
             var sumUp = 0.0
             var sumDownQue = 0.0
             var sumDownDoc = 0.0
-            val doc = directoryReader.document(docId)
-            val externalDocId = doc["id"]
+            val externalDocId = getDocumentExId(docId)
             val vector = directoryReader.getTermVector(docId, "content") ?: continue
             val terms = vector.iterator()
             var bytesRef: BytesRef?
@@ -177,43 +185,33 @@ class LISA {
 
                 val docTerm = bytesRef.utf8ToString()
 
-                //if (!query.terms.contains(doc_term)) continue;
                 val docTf = terms.totalTermFreq()
-
-                //if (doc_tf <= 0) continue;
-                val queTf = query!!.tf[docTerm]
-                val docDf = directoryReader.docFreq(Term("content", docTerm))
-                val docIdf = log10((N.toFloat() / docDf).toDouble())
-                val docWeight = log10((docTf + 1).toDouble()) * docIdf
-                val qWeight = log10(((queTf ?: 0) + 1).toDouble()) * docIdf
+                val queTf = query.tf[docTerm]
+                val docDf = docFrequency(docTerm)
+                val docIdf = log10(N.toDouble() / docDf)
+                val docWeight = (log10(docTf.toDouble()) +1) * docIdf
+                val qWeight = (log10((queTf ?: 0).toDouble()) +1) * docIdf
                 sumUp += qWeight * docWeight
                 sumDownQue += qWeight * qWeight
                 sumDownDoc += docWeight * docWeight
             }
-            val score = sumUp / (Math.sqrt(sumDownDoc) * Math.sqrt(sumDownQue))
-            if (score > 0) scores.add(Score(score, externalDocId))
+
+            val score = sumUp / (sqrt(sumDownDoc) * sqrt(sumDownQue))
+
+            scores.add(Score(score, externalDocId))
         }
-        scores.sortWith(Comparator { o1: Score, o2: Score ->
-            o1.score.compareTo(o2.score) * -1
-        })
+        scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * -1 }
         return scores
     }
 
-    @Throws(IOException::class)
-    fun bm25(query: Query?): ArrayList<Score> {
+    fun bm25(query: Query): ArrayList<Score> {
         val scores = ArrayList<Score>()
         val N = directoryReader.maxDoc()
-        var avgDl = 0
+        var avgDl = getAverageFieldLength()
 
-        //for calc avgFieldLength
-        for (docId in 0 until directoryReader.maxDoc()) {
-            avgDl += directoryReader.getTermVector(docId, "content").sumTotalTermFreq.toInt()
-        }
-        avgDl /= N
         for (docId in 0 until directoryReader.maxDoc()) {
             var score = 0.0
-            val doc = directoryReader.document(docId)
-            val externalDocId = doc["id"]
+            val externalDocId = getDocumentExId(docId)
             val vector = directoryReader.getTermVector(docId, "content") ?: continue
             val dl = vector.sumTotalTermFreq
             val terms = vector.iterator()
@@ -228,29 +226,29 @@ class LISA {
                 if (bytesRef == null) break
 
                 val docTerm = bytesRef.utf8ToString()
-                if (!query!!.terms.contains(docTerm)) continue
+
+                if (!query.terms.contains(docTerm)) continue
+
                 val tf = terms.totalTermFreq()
 
-                //if (tf <= 0) continue;
-                val df = directoryReader.docFreq(Term("content", docTerm))
-                val idf = ln(((N - df + 0.5f) / (df + 0.5f) + 1).toDouble())
-                score += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * (dl / avgDl.toDouble())))
+                if (tf <= 0) continue
+
+                val df = docFrequency(docTerm)
+                val idf = log10(N.toDouble() / df)
+
+                score += idf *( tf * (k1 + 1) / (tf + k1 * (1 - b + (b * (dl / avgDl)))))
             }
-            if (score > 0) scores.add(Score(score, externalDocId))
+            scores.add(Score(score, externalDocId))
         }
-        scores.sortWith(Comparator { o1: Score, o2: Score ->
-            o1.score.compareTo(o2.score) * -1
-        })
+        scores.sortWith { o1: Score, o2: Score -> o1.score.compareTo(o2.score) * -1 }
         return scores
     }
 
-    @Throws(IOException::class)
-    fun likelihood(query: Query?): ArrayList<Score> {
+    fun likelihood(query: Query): ArrayList<Score> {
         val scores = ArrayList<Score>()
         for (docId in 0 until directoryReader.maxDoc()) {
             var score = 1.0
-            val doc = directoryReader.document(docId)
-            val externalDocId = doc["id"]
+            val externalDocId = getDocumentExId(docId)
             val vector = directoryReader.getTermVector(docId, "content") ?: continue
             val dl = vector.sumTotalTermFreq
             val terms = vector.iterator()

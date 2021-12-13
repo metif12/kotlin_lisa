@@ -18,18 +18,8 @@ class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>)
         this.terms = ArrayList()
         this.relevant = arrayListOf<String>(*relevantDocExIDs)
         this.text = text.replace("\r\n", " ")
-        val porterStemmer = PorterStemmer()
 
         val tokens = analyze(text)
-
-//        val tokens = text
-//            .toLowerCase()
-//            .replace("\r\n", " ")
-//            .replace(".", " ")
-//            .replace(",", " ")
-//            .replace("-", " ")
-//            .replace("(", " ")
-//            .replace(")", " ")
 
         for (token in tokens) {
             if (!terms.contains(token)) {
@@ -39,21 +29,6 @@ class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>)
                 tf.replace(token, tf[token]!! + 1)
             }
         }
-
-//        for (token in tokens.split(" ".toRegex())) {
-//            if (token != "" && !EnglishAnalyzer.ENGLISH_STOP_WORDS_SET.contains(token)) {
-//                porterStemmer.current = token
-//                porterStemmer.stem()
-//                val current = porterStemmer.current
-//
-//                if (!terms.contains(current)) {
-//                    terms.add(current)
-//                    tf[current] = 1
-//                } else {
-//                    tf.replace(current, tf[current]!! + 1)
-//                }
-//            }
-//        }
     }
 
     @Throws(IOException::class)
