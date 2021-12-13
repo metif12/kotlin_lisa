@@ -1,10 +1,12 @@
 package ir.lisa
 
+import org.apache.lucene.analysis.TokenStream
 import org.apache.lucene.analysis.en.EnglishAnalyzer
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
 import org.tartarus.snowball.ext.PorterStemmer
+import java.io.IOException
 import java.util.*
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
+
 
 class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>) {
     var tf: HashMap<String, Int>
@@ -17,28 +19,53 @@ class Query(var text: String, val exID: String, relevantDocExIDs: Array<String>)
         this.relevant = arrayListOf<String>(*relevantDocExIDs)
         this.text = text.replace("\r\n", " ")
         val porterStemmer = PorterStemmer()
-        val tokens = text
-            .lowercase(Locale.getDefault())
-            .replace("\r\n", " ")
-            .replace(".", " ")
-            .replace(",", " ")
-            .replace("-", " ")
-            .replace("(", " ")
-            .replace(")", " ")
-            .split(" ".toRegex()).toTypedArray()
+
+        val tokens = analyze(text)
+
+//        val tokens = text
+//            .toLowerCase()
+//            .replace("\r\n", " ")
+//            .replace(".", " ")
+//            .replace(",", " ")
+//            .replace("-", " ")
+//            .replace("(", " ")
+//            .replace(")", " ")
 
         for (token in tokens) {
-            if (token != "" && !EnglishAnalyzer.ENGLISH_STOP_WORDS_SET.contains(token)) {
-                porterStemmer.current = token
-                porterStemmer.stem()
-                val current = porterStemmer.current
-                if (!terms.contains(current)) {
-                    terms.add(current)
-                    tf[current] = 1
-                } else {
-                    tf.replace(current, tf[current]!! + 1)
-                }
+            if (!terms.contains(token)) {
+                terms.add(token)
+                tf[token] = 1
+            } else {
+                tf.replace(token, tf[token]!! + 1)
             }
         }
+
+//        for (token in tokens.split(" ".toRegex())) {
+//            if (token != "" && !EnglishAnalyzer.ENGLISH_STOP_WORDS_SET.contains(token)) {
+//                porterStemmer.current = token
+//                porterStemmer.stem()
+//                val current = porterStemmer.current
+//
+//                if (!terms.contains(current)) {
+//                    terms.add(current)
+//                    tf[current] = 1
+//                } else {
+//                    tf.replace(current, tf[current]!! + 1)
+//                }
+//            }
+//        }
+    }
+
+    @Throws(IOException::class)
+    fun analyze(text: String): List<String> {
+        val analyzer = MyAnalyzer()
+        val result: MutableList<String> = ArrayList()
+        val tokenStream: TokenStream = analyzer.tokenStream("content", text)
+        val attr: CharTermAttribute = tokenStream.addAttribute(CharTermAttribute::class.java)
+        tokenStream.reset()
+        while (tokenStream.incrementToken()) {
+            result.add(attr.toString())
+        }
+        return result
     }
 }

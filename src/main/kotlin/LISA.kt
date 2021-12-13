@@ -284,7 +284,7 @@ class LISA {
         val t = StringBuilder()
         t.append('\n')
         t.append(String.format("Query: %s\n", query.text.replace("\r\n", " ")))
-        t.append(String.format("Query tokens: %s\n", listOf(query.text).joinToString(separator = ", ")))
+        t.append(String.format("Query tokens: %s\n", listOf(query.terms).joinToString(separator = ", ")))
         t.append(String.format("relevant: %s\n", listOf(query.relevant).joinToString(separator = ", ")))
 
         t.append(String.format("TOP@%d: ", hit))
